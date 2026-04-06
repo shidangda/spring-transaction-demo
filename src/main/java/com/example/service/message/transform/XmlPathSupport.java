@@ -117,6 +117,7 @@ final class XmlPathSupport {
             String seg = relativePath.get(i);
             boolean isLast = i == relativePath.size() - 1;
 
+            // 属性路径：.../@Attr
             if (isAttributeSegment(seg)) {
                 if (!isLast) {
                     return Collections.emptyList();
@@ -127,6 +128,32 @@ final class XmlPathSupport {
                     String v = e.attributeValue(attrName);
                     if (v != null && !v.isEmpty()) {
                         out.add(v);
+                    }
+                }
+                return out;
+            }
+
+            // 特殊路径：.../SttlmPrty-/A03[/XX]
+            // 语义：从 <SttlmPrty> 的文本 "/A03/12345" 中提取 12345。
+            if (isTaggedContainerSegment(seg)) {
+                if (i + 1 >= relativePath.size()) {
+                    return Collections.emptyList();
+                }
+                String tagCode = relativePath.get(i + 1);
+                List<Element> taggedNodes = new ArrayList<>();
+                String realNodeName = taggedElementName(seg);
+                for (Element e : current) {
+                    taggedNodes.addAll(e.elements(realNodeName));
+                }
+                if (taggedNodes.isEmpty()) {
+                    return Collections.emptyList();
+                }
+
+                List<String> out = new ArrayList<>();
+                for (Element e : taggedNodes) {
+                    String extracted = extractTaggedValue(e.getTextTrim(), tagCode);
+                    if (extracted != null && !extracted.isEmpty()) {
+                        out.add(extracted);
                     }
                 }
                 return out;
@@ -154,5 +181,26 @@ final class XmlPathSupport {
         }
 
         return Collections.emptyList();
+    }
+
+    static boolean isTaggedContainerSegment(String seg) {
+        return seg != null && seg.endsWith("-") && seg.length() > 1;
+    }
+
+    static String taggedElementName(String seg) {
+        return isTaggedContainerSegment(seg) ? seg.substring(0, seg.length() - 1) : seg;
+    }
+
+    static String extractTaggedValue(String text, String tagCode) {
+        if (text == null || tagCode == null || tagCode.trim().isEmpty()) {
+            return null;
+        }
+        String t = text.trim();
+        String prefix = "/" + tagCode.trim() + "/";
+        if (!t.startsWith(prefix)) {
+            return null;
+        }
+        String v = t.substring(prefix.length()).trim();
+        return v.isEmpty() ? null : v;
     }
 }

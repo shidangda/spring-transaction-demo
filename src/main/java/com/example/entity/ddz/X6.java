@@ -11,4 +11,6 @@ public class X6 {
     private String XchgRate;
     private String Ccy;
     private String Amt;
+    private String A03;
+    private String A04;
 }

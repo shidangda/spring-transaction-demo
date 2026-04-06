@@ -33,6 +33,7 @@ public class SignPlainTextBuilder {
                 .collect(Collectors.toList());
 
         Map<String, String> amountCurrencyPathIndex = buildAmountCurrencyPathIndex(signRows);
+        signRows = removeStandaloneCurrencyRows(signRows, amountCurrencyPathIndex);
 
         List<String> values = new ArrayList<>();
         List<String> rootPath = Collections.singletonList(root.getName());
@@ -166,6 +167,20 @@ public class SignPlainTextBuilder {
 
     private String joinPath(List<String> path) {
         return "/" + String.join("/", path);
+    }
+
+    private List<RspCfg> removeStandaloneCurrencyRows(List<RspCfg> rows, Map<String, String> amountCurrencyPathIndex) {
+        if (rows == null || rows.isEmpty() || amountCurrencyPathIndex.isEmpty()) {
+            return rows;
+        }
+        Set<String> ccyPaths = amountCurrencyPathIndex.values().stream()
+                .map(XmlPathSupport::splitPath)
+                .map(this::joinPath)
+                .collect(Collectors.toSet());
+
+        return rows.stream()
+                .filter(r -> r.getXpath() != null && !ccyPaths.contains(r.getXpath()))
+                .collect(Collectors.toList());
     }
 
     private List<String> findNextMultiAnchor(List<String> leafPath, List<String> contextPath, List<StructureAnchor> anchors) {

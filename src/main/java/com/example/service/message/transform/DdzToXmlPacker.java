@@ -118,6 +118,12 @@ public class DdzToXmlPacker {
             return;
         }
 
+        // 特殊映射：.../SttlmPrty-/A03 -> <SttlmPrty>/A03/{value}</SttlmPrty>
+        if (relative.size() >= 2 && XmlPathSupport.isTaggedContainerSegment(relative.get(0))) {
+            writeTaggedField(unit, relative, value);
+            return;
+        }
+
         boolean isMulti = isMultiTag(row.getMultiTag());
         writeValueByRelativePath(unit, relative, value, isMulti);
     }
@@ -171,6 +177,27 @@ public class DdzToXmlPacker {
             leaf = cursor.addElement(lastSeg);
         }
         leaf.setText(String.valueOf(value));
+    }
+
+    private void writeTaggedField(Element unit, List<String> relative, Object value) {
+        String containerSeg = relative.get(0);
+        String tagCode = relative.get(1);
+        if (tagCode == null || tagCode.trim().isEmpty()) {
+            return;
+        }
+
+        String elementName = XmlPathSupport.taggedElementName(containerSeg);
+        if (elementName == null || elementName.trim().isEmpty()) {
+            return;
+        }
+
+        Element container = unit.element(elementName);
+        if (container == null) {
+            container = unit.addElement(elementName);
+        }
+
+        // 配置约定把 DDZ 字段值映射到 /A03/{值} 的 {值} 段
+        container.setText("/" + tagCode + "/" + String.valueOf(value));
     }
 
     private List<Object> flattenToValues(Object value) {
