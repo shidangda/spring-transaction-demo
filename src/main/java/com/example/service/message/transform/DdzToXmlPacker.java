@@ -119,10 +119,10 @@ public class DdzToXmlPacker {
         }
 
         boolean isMulti = isMultiTag(row.getMultiTag());
-        writeLeafByRelativePath(unit, relative, value, isMulti);
+        writeValueByRelativePath(unit, relative, value, isMulti);
     }
 
-    private void writeLeafByRelativePath(Element unit, List<String> relative, Object value, boolean multi) {
+    private void writeValueByRelativePath(Element unit, List<String> relative, Object value, boolean multi) {
         if (relative == null || relative.isEmpty()) {
             return;
         }
@@ -130,6 +130,10 @@ public class DdzToXmlPacker {
         Element cursor = unit;
         for (int i = 0; i < relative.size() - 1; i++) {
             String seg = relative.get(i);
+            if (XmlPathSupport.isAttributeSegment(seg)) {
+                // 中间段不应是属性，忽略非法配置
+                return;
+            }
             Element next = cursor.element(seg);
             if (next == null) {
                 next = cursor.addElement(seg);
@@ -137,21 +141,34 @@ public class DdzToXmlPacker {
             cursor = next;
         }
 
-        String leafName = relative.get(relative.size() - 1);
+        String lastSeg = relative.get(relative.size() - 1);
+        if (XmlPathSupport.isAttributeSegment(lastSeg)) {
+            String attrName = XmlPathSupport.attributeName(lastSeg);
+            if (multi) {
+                List<Object> values = flattenToValues(value);
+                if (!values.isEmpty() && values.get(0) != null) {
+                    cursor.addAttribute(attrName, String.valueOf(values.get(0)));
+                }
+            } else {
+                cursor.addAttribute(attrName, String.valueOf(value));
+            }
+            return;
+        }
+
         if (multi) {
             List<Object> values = flattenToValues(value);
             for (Object one : values) {
                 if (one == null) {
                     continue;
                 }
-                cursor.addElement(leafName).setText(String.valueOf(one));
+                cursor.addElement(lastSeg).setText(String.valueOf(one));
             }
             return;
         }
 
-        Element leaf = cursor.element(leafName);
+        Element leaf = cursor.element(lastSeg);
         if (leaf == null) {
-            leaf = cursor.addElement(leafName);
+            leaf = cursor.addElement(lastSeg);
         }
         leaf.setText(String.valueOf(value));
     }

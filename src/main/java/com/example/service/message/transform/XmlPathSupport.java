@@ -52,6 +52,9 @@ final class XmlPathSupport {
         current.add(start);
 
         for (String seg : relativePath) {
+            if (isAttributeSegment(seg)) {
+                return Collections.emptyList();
+            }
             List<Element> next = new ArrayList<>();
             for (Element e : current) {
                 next.addAll(e.elements(seg));
@@ -67,11 +70,89 @@ final class XmlPathSupport {
     static Element getByRelativePath(Element start, List<String> relativePath) {
         Element cur = start;
         for (String seg : relativePath) {
+            if (isAttributeSegment(seg)) {
+                return cur;
+            }
             if (cur == null) {
                 return null;
             }
             cur = cur.element(seg);
         }
         return cur;
+    }
+
+    static boolean isAttributeSegment(String seg) {
+        return seg != null && seg.startsWith("@");
+    }
+
+    static boolean isAttributePath(List<String> path) {
+        return path != null && !path.isEmpty() && isAttributeSegment(path.get(path.size() - 1));
+    }
+
+    static String attributeName(String seg) {
+        if (seg == null) {
+            return null;
+        }
+        return seg.startsWith("@") ? seg.substring(1) : seg;
+    }
+
+    static String getSingleValue(Element start, List<String> relativePath) {
+        List<String> values = selectValues(start, relativePath);
+        return values.isEmpty() ? null : values.get(0);
+    }
+
+    static List<String> selectValues(Element start, List<String> relativePath) {
+        if (start == null) {
+            return Collections.emptyList();
+        }
+        if (relativePath == null || relativePath.isEmpty()) {
+            String text = start.getTextTrim();
+            return text == null || text.isEmpty() ? Collections.emptyList() : Collections.singletonList(text);
+        }
+
+        List<Element> current = new ArrayList<>();
+        current.add(start);
+
+        for (int i = 0; i < relativePath.size(); i++) {
+            String seg = relativePath.get(i);
+            boolean isLast = i == relativePath.size() - 1;
+
+            if (isAttributeSegment(seg)) {
+                if (!isLast) {
+                    return Collections.emptyList();
+                }
+                String attrName = attributeName(seg);
+                List<String> out = new ArrayList<>();
+                for (Element e : current) {
+                    String v = e.attributeValue(attrName);
+                    if (v != null && !v.isEmpty()) {
+                        out.add(v);
+                    }
+                }
+                return out;
+            }
+
+            List<Element> next = new ArrayList<>();
+            for (Element e : current) {
+                next.addAll(e.elements(seg));
+            }
+            current = next;
+            if (current.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            if (isLast) {
+                List<String> out = new ArrayList<>();
+                for (Element e : current) {
+                    String v = e.getTextTrim();
+                    if (v != null && !v.isEmpty()) {
+                        out.add(v);
+                    }
+                }
+                return out;
+            }
+        }
+
+        return Collections.emptyList();
     }
 }

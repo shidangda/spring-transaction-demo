@@ -57,8 +57,7 @@ public class XmlToDdzUnpacker {
                     value = unit.getTextTrim();
                 } else {
                     List<String> relative = full.subList(def.getUnitPathSegments().size(), full.size());
-                    Element leaf = XmlPathSupport.getByRelativePath(unit, relative);
-                    value = leaf == null ? null : leaf.getTextTrim();
+                    value = XmlPathSupport.getSingleValue(unit, relative);
                 }
 
                 if (value != null) {

@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Component
@@ -31,17 +32,29 @@ public class SignPlainTextBuilder {
                 .filter(a -> !a.getPath().isEmpty())
                 .collect(Collectors.toList());
 
-        List<String> parts = new ArrayList<>();
+        Map<String, String> amountCurrencyPathIndex = buildAmountCurrencyPathIndex(signRows);
+
+        List<String> values = new ArrayList<>();
         List<String> rootPath = Collections.singletonList(root.getName());
-        appendSignPartsByContext(parts, root, rootPath, signRows, structureAnchors);
-        return String.join("|", parts);
+        appendSignPartsByContext(values, root, rootPath, signRows, structureAnchors, amountCurrencyPathIndex);
+
+        if (values.isEmpty()) {
+            return "";
+        }
+        // 按规范：只拼值，且每个值后都带“|”，最后一个也保留“|”。
+        StringBuilder sb = new StringBuilder();
+        for (String value : values) {
+            sb.append(value).append("|");
+        }
+        return sb.toString();
     }
 
-    private void appendSignPartsByContext(List<String> parts,
+    private void appendSignPartsByContext(List<String> values,
                                           Element context,
                                           List<String> contextPath,
                                           List<RspCfg> rows,
-                                          List<StructureAnchor> anchors) {
+                                          List<StructureAnchor> anchors,
+                                          Map<String, String> amountCurrencyPathIndex) {
         if (rows == null || rows.isEmpty()) {
             return;
         }
@@ -73,31 +86,86 @@ public class SignPlainTextBuilder {
 
         for (SeqSignOp op : ops) {
             if (op.singleRow != null) {
-                appendRowValuesInContext(parts, context, contextPath, op.singleRow);
+                appendRowValuesInContext(values, context, contextPath, op.singleRow, amountCurrencyPathIndex);
                 continue;
             }
 
             List<String> relAnchorPath = op.anchorPath.subList(contextPath.size(), op.anchorPath.size());
             List<Element> units = XmlPathSupport.selectElements(context, relAnchorPath);
             for (Element unit : units) {
-                appendSignPartsByContext(parts, unit, op.anchorPath, op.groupRows, anchors);
+                appendSignPartsByContext(values, unit, op.anchorPath, op.groupRows, anchors, amountCurrencyPathIndex);
             }
         }
     }
 
-    private void appendRowValuesInContext(List<String> parts, Element context, List<String> contextPath, RspCfg row) {
+    private void appendRowValuesInContext(List<String> values,
+                                          Element context,
+                                          List<String> contextPath,
+                                          RspCfg row,
+                                          Map<String, String> amountCurrencyPathIndex) {
         List<String> full = XmlPathSupport.splitPath(row.getXpath());
         if (full.isEmpty() || !XmlPathSupport.isPrefix(contextPath, full)) {
             return;
         }
         List<String> relative = full.subList(contextPath.size(), full.size());
-        List<Element> leaves = XmlPathSupport.selectElements(context, relative);
-        for (Element leaf : leaves) {
-            String value = leaf.getTextTrim();
-            if (value != null && !value.isEmpty()) {
-                parts.add(row.getFieldName() + "=" + value);
+        List<String> rawValues = XmlPathSupport.selectValues(context, relative);
+
+        String fullPathKey = joinPath(full);
+        String ccyPathKey = amountCurrencyPathIndex.get(fullPathKey);
+        if (ccyPathKey != null && !XmlPathSupport.isAttributePath(full)) {
+            List<String> ccyPath = XmlPathSupport.splitPath(ccyPathKey);
+            if (XmlPathSupport.isPrefix(contextPath, ccyPath)) {
+                List<String> ccyRelative = ccyPath.subList(contextPath.size(), ccyPath.size());
+                List<String> ccys = XmlPathSupport.selectValues(context, ccyRelative);
+                for (int i = 0; i < rawValues.size(); i++) {
+                    String amount = rawValues.get(i);
+                    if (amount == null || amount.isEmpty()) {
+                        continue;
+                    }
+                    String ccy = i < ccys.size() ? ccys.get(i) : null;
+                    if (ccy != null && !ccy.isEmpty()) {
+                        values.add(ccy + amount);
+                    } else {
+                        values.add(amount);
+                    }
+                }
+                return;
             }
         }
+
+        for (String value : rawValues) {
+            if (value != null && !value.isEmpty()) {
+                values.add(value);
+            }
+        }
+    }
+
+    private Map<String, String> buildAmountCurrencyPathIndex(List<RspCfg> rows) {
+        Map<String, String> out = new LinkedHashMap<>();
+        Set<String> pathSet = rows.stream()
+                .map(RspCfg::getXpath)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        for (RspCfg row : rows) {
+            String xpath = row.getXpath();
+            if (xpath == null || xpath.trim().isEmpty()) {
+                continue;
+            }
+            List<String> path = XmlPathSupport.splitPath(xpath);
+            if (XmlPathSupport.isAttributePath(path)) {
+                continue;
+            }
+            String ccyPath = xpath + "/@Ccy";
+            if (pathSet.contains(ccyPath)) {
+                out.put(joinPath(path), ccyPath);
+            }
+        }
+        return out;
+    }
+
+    private String joinPath(List<String> path) {
+        return "/" + String.join("/", path);
     }
 
     private List<String> findNextMultiAnchor(List<String> leafPath, List<String> contextPath, List<StructureAnchor> anchors) {

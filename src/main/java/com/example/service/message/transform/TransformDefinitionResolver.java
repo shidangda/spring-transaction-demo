@@ -211,7 +211,8 @@ public class TransformDefinitionResolver {
         int bestLen = -1;
         for (StructureAnchor anchor : structureAnchors) {
             List<String> sp = anchor.getPath();
-            if (sp.size() < base.size() && XmlPathSupport.isPrefix(sp, base) && sp.size() > bestLen) {
+            // 允许“等长锚点”命中：当 base 本身就是结构节点时，不应错误回退到更上层（如根节点）。
+            if (sp.size() <= base.size() && XmlPathSupport.isPrefix(sp, base) && sp.size() > bestLen) {
                 best = sp;
                 bestLen = sp.size();
             }

@@ -21,6 +21,7 @@
         <InstrId>2358680257</InstrId>
         <InstrId>2358680258</InstrId>
         <XchgRate>0.1</XchgRate>
+        <Amt Ccy="CNY">2784245.00</Amt>
     </CdtTrfTxInf>
     <CdtTrfTxInf>
         <PmtId>
@@ -34,5 +35,6 @@
         <InstrId>2358680259</InstrId>
         <InstrId>2358680210</InstrId>
         <XchgRate>0.2</XchgRate>
+        <Amt Ccy="USD">8888.88</Amt>
     </CdtTrfTxInf>
 </FIToFICstmrCdtTrf>
