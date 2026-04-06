@@ -4,7 +4,6 @@ import lombok.Data;
 
 @Data
 public class RspCfg {
-    private Long id;
     private String wkeCode;
     private String xpath;
     private String ddzName;

@@ -6,7 +6,6 @@
 <mapper namespace="com.example.mapper.RspCfgMapper">
 
     <resultMap id="RspCfgResultMap" type="com.example.entity.RspCfg">
-        <id property="id" column="id"/>
         <result property="wkeCode" column="wke_code"/>
         <result property="xpath" column="xpath"/>
         <result property="ddzName" column="ddz_name"/>
@@ -16,8 +15,7 @@
     </resultMap>
 
     <select id="selectByWkeCode" resultMap="RspCfgResultMap">
-        SELECT id,
-               wke_code,
+        SELECT wke_code,
                xpath,
                ddz_name,
                field_name,
@@ -25,7 +23,7 @@
                multi_tag
         FROM rsp_cfg_t
         WHERE wke_code = #{wkeCode}
-        ORDER BY field_seq ASC, id ASC
+        ORDER BY field_seq ASC
     </select>
 
 </mapper>

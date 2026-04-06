@@ -13,6 +13,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -98,6 +101,10 @@ public class XmlDdzTransformService {
                 continue;
             }
             List<Map<String, Object>> instances = castInstanceList(dtoMap.get(def.ddzName));
+            if (!def.multi && !instances.isEmpty()) {
+                writeDdzInstance(root, def, instances.get(0), defs);
+                continue;
+            }
             for (Map<String, Object> instance : instances) {
                 writeDdzInstance(root, def, instance, defs);
             }
@@ -123,60 +130,8 @@ public class XmlDdzTransformService {
     private void writeDdzInstance(Element root, DdzDef def, Map<String, Object> instance, Map<String, DdzDef> defs) {
         // 根据 unitPath 在 XML 上创建该实例对应的“对象单元节点”
         Element unit = createUnitElement(root, def.unitPathSegments);
-
-        // 写当前 DDZ 的字段
-        for (RspCfg row : def.rows) {
-            String fieldName = row.getFieldName();
-            if (fieldName == null || fieldName.trim().isEmpty()) {
-                continue;
-            }
-            Object value = instance.get(fieldName);
-            if (value == null) {
-                continue;
-            }
-
-            List<String> fullPath = splitPath(row.getXpath());
-
-            // 特殊场景：单字段对象且 xpath 就是 unitPath，直接写节点文本
-            if (fullPath.equals(def.unitPathSegments) && def.rows.size() == 1) {
-                unit.setText(String.valueOf(value));
-                continue;
-            }
-
-            // 其余场景：在 unit 下按相对路径补齐中间层并写叶子
-            List<String> relative = fullPath.subList(def.unitPathSegments.size(), fullPath.size());
-            if (relative.isEmpty()) {
-                continue;
-            }
-
-            Element cursor = unit;
-            for (int i = 0; i < relative.size(); i++) {
-                String seg = relative.get(i);
-                boolean isLeaf = i == relative.size() - 1;
-                if (isLeaf) {
-                    Element leaf = cursor.addElement(seg);
-                    leaf.setText(String.valueOf(value));
-                } else {
-                    Element next = cursor.element(seg);
-                    if (next == null) {
-                        next = cursor.addElement(seg);
-                    }
-                    cursor = next;
-                }
-            }
-        }
-
-        // 递归写子 DDZ
-        for (Map.Entry<String, DdzDef> entry : defs.entrySet()) {
-            DdzDef child = entry.getValue();
-            if (!def.ddzName.equals(child.parentDdzName)) {
-                continue;
-            }
-            List<Map<String, Object>> childInstances = castInstanceList(instance.get(child.ddzName));
-            for (Map<String, Object> childInstance : childInstances) {
-                writeDdzChildInstance(unit, child, childInstance, defs);
-            }
-        }
+        // 按 field_seq 顺序交织写“本对象字段”和“子对象块”，避免顺序错位
+        writeDdzUnitByFieldSeq(unit, def, instance, defs);
     }
 
     /**
@@ -205,64 +160,70 @@ public class XmlDdzTransformService {
             }
         }
 
-        // 在已创建好的 child unit 上写字段
-        DdzDef fake = new DdzDef();
-        fake.ddzName = childDef.ddzName;
-        fake.rows = childDef.rows;
-        fake.unitPathSegments = childDef.unitPathSegments;
-        fake.parentDdzName = childDef.parentDdzName;
-        writeFieldsOnExistingUnit(cursor, fake, childInstance);
+        // 按 field_seq 在 child unit 内继续交织写字段/子对象
+        writeDdzUnitByFieldSeq(cursor, childDef, childInstance, defs);
+    }
 
-        // 继续递归下一级子 DDZ
-        for (Map.Entry<String, DdzDef> entry : defs.entrySet()) {
-            DdzDef nextChild = entry.getValue();
-            if (!childDef.ddzName.equals(nextChild.parentDdzName)) {
+    /**
+     * 在同一个 unit 节点内，按 field_seq 顺序写“字段节点 + 子对象节点”。
+     */
+    private void writeDdzUnitByFieldSeq(Element unit, DdzDef def, Map<String, Object> instance, Map<String, DdzDef> defs) {
+        List<SeqWriteOp> ops = new ArrayList<>();
+
+        for (RspCfg row : def.rows) {
+            if (row.getFieldName() == null || row.getFieldName().trim().isEmpty()) {
                 continue;
             }
-            List<Map<String, Object>> nextChildInstances = castInstanceList(childInstance.get(nextChild.ddzName));
-            for (Map<String, Object> ins : nextChildInstances) {
-                writeDdzChildInstance(cursor, nextChild, ins, defs);
+            ops.add(SeqWriteOp.field(row));
+        }
+
+        for (DdzDef child : defs.values()) {
+            if (!def.ddzName.equals(child.parentDdzName)) {
+                continue;
+            }
+            ops.add(SeqWriteOp.child(child));
+        }
+
+        ops.sort(Comparator.comparingInt(SeqWriteOp::seq));
+
+        for (SeqWriteOp op : ops) {
+            if (op.fieldRow != null) {
+                writeFieldByCfg(unit, def, instance, op.fieldRow);
+                continue;
+            }
+
+            DdzDef child = op.childDef;
+            List<Map<String, Object>> childInstances = castInstanceList(instance.get(child.ddzName));
+            if (!child.multi && !childInstances.isEmpty()) {
+                writeDdzChildInstance(unit, child, childInstances.get(0), defs);
+                continue;
+            }
+            for (Map<String, Object> childInstance : childInstances) {
+                writeDdzChildInstance(unit, child, childInstance, defs);
             }
         }
     }
 
-    /**
-     * 在“已存在的 unit 节点”上写字段。
-     */
-    private void writeFieldsOnExistingUnit(Element unit, DdzDef def, Map<String, Object> instance) {
-        for (RspCfg row : def.rows) {
-            String fieldName = row.getFieldName();
-            if (fieldName == null || fieldName.trim().isEmpty()) {
-                continue;
-            }
-            Object value = instance.get(fieldName);
-            if (value == null) {
-                continue;
-            }
-
-            List<String> fullPath = splitPath(row.getXpath());
-            if (fullPath.equals(def.unitPathSegments) && def.rows.size() == 1) {
-                unit.setText(String.valueOf(value));
-                continue;
-            }
-
-            List<String> relative = fullPath.subList(def.unitPathSegments.size(), fullPath.size());
-            Element cursor = unit;
-            for (int i = 0; i < relative.size(); i++) {
-                String seg = relative.get(i);
-                boolean isLeaf = i == relative.size() - 1;
-                if (isLeaf) {
-                    Element leaf = cursor.addElement(seg);
-                    leaf.setText(String.valueOf(value));
-                } else {
-                    Element next = cursor.element(seg);
-                    if (next == null) {
-                        next = cursor.addElement(seg);
-                    }
-                    cursor = next;
-                }
-            }
+    private void writeFieldByCfg(Element unit, DdzDef def, Map<String, Object> instance, RspCfg row) {
+        String fieldName = row.getFieldName();
+        Object value = instance.get(fieldName);
+        if (value == null) {
+            return;
         }
+
+        List<String> fullPath = splitPath(row.getXpath());
+        if (fullPath.equals(def.unitPathSegments) && def.rows.size() == 1) {
+            unit.setText(String.valueOf(value));
+            return;
+        }
+
+        List<String> relative = fullPath.subList(def.unitPathSegments.size(), fullPath.size());
+        if (relative.isEmpty()) {
+            return;
+        }
+
+        boolean isMulti = isMultiTag(row.getMultiTag());
+        writeLeafByRelativePath(unit, relative, value, isMulti);
     }
 
     /**
@@ -353,13 +314,20 @@ public class XmlDdzTransformService {
     /**
      * 构建 DDZ 定义：
      * - 按 ddzName 分组
-     * - 推导 unitPath
+     * - 推导 unitPath（支持“结构行”参与推导）
      * - 推导父 DDZ（最长前缀匹配）
      */
     private Map<String, DdzDef> buildDefs(List<RspCfg> cfgList) {
         Map<String, List<RspCfg>> byDdz = cfgList.stream()
                 .filter(c -> c.getDdzName() != null && !c.getDdzName().trim().isEmpty())
                 .collect(Collectors.groupingBy(RspCfg::getDdzName, LinkedHashMap::new, Collectors.toList()));
+
+        // 结构行：ddz_name 为空的配置行，作为“对象层级锚点”参与 unitPath 推导。
+        List<StructureAnchor> structureAnchors = cfgList.stream()
+                .filter(c -> c.getDdzName() == null || c.getDdzName().trim().isEmpty())
+                .map(c -> new StructureAnchor(splitPath(c.getXpath()), isMultiTag(c.getMultiTag())))
+                .filter(a -> !a.path.isEmpty())
+                .collect(Collectors.toList());
 
         Map<String, DdzDef> defs = new LinkedHashMap<>();
         for (Map.Entry<String, List<RspCfg>> e : byDdz.entrySet()) {
@@ -371,7 +339,14 @@ public class XmlDdzTransformService {
             DdzDef def = new DdzDef();
             def.ddzName = ddzName;
             def.rows = rows;
-            def.unitPathSegments = inferUnitPath(rows);
+            def.declaredChildren = resolveDeclaredChildDdzNames(ddzName);
+
+            // 对“容器型 DDZ（实体类中声明了子 DDZ 列表）”优先用结构锚点回退，
+            // 例如 X6 只有 XchgRate 一条字段时，也能把 unitPath 锚到 /.../CdtTrfTxInf。
+            boolean preferStructureAnchor = !def.declaredChildren.isEmpty();
+            def.unitPathSegments = inferUnitPath(rows, structureAnchors, preferStructureAnchor);
+            // 优先用结构锚点判定对象是否可重复，避免被字段行 multi_tag 误导。
+            def.multi = resolveDefMulti(def, structureAnchors);
             defs.put(ddzName, def);
         }
 
@@ -402,17 +377,148 @@ public class XmlDdzTransformService {
     /**
      * 推导一个 DDZ 对象的 unitPath。
      */
-    private List<String> inferUnitPath(List<RspCfg> rows) {
+    private List<String> inferUnitPath(List<RspCfg> rows, List<StructureAnchor> structureAnchors, boolean preferStructureAnchor) {
+        List<String> base;
         if (rows.size() == 1) {
-            return splitPath(rows.get(0).getXpath());
+            base = splitPath(rows.get(0).getXpath());
+        } else {
+            // 多字段取 xpath 最长公共前缀
+            List<String> lcp = splitPath(rows.get(0).getXpath());
+            for (int i = 1; i < rows.size(); i++) {
+                lcp = commonPrefix(lcp, splitPath(rows.get(i).getXpath()));
+            }
+            base = lcp;
         }
 
-        // 多字段取 xpath 最长公共前缀
-        List<String> lcp = splitPath(rows.get(0).getXpath());
-        for (int i = 1; i < rows.size(); i++) {
-            lcp = commonPrefix(lcp, splitPath(rows.get(i).getXpath()));
+        if (!preferStructureAnchor) {
+            return base;
         }
-        return lcp;
+
+        List<String> anchor = findBestStructureAnchor(base, structureAnchors);
+        return anchor.isEmpty() ? base : anchor;
+    }
+
+    /**
+     * 从结构行中挑选“最贴近 base 的祖先路径”。
+     */
+    private List<String> findBestStructureAnchor(List<String> base, List<StructureAnchor> structureAnchors) {
+        List<String> best = Collections.emptyList();
+        int bestLen = -1;
+        for (StructureAnchor anchor : structureAnchors) {
+            List<String> sp = anchor.path;
+            if (sp.size() < base.size() && isPrefix(sp, base) && sp.size() > bestLen) {
+                best = sp;
+                bestLen = sp.size();
+            }
+        }
+        return best;
+    }
+
+    private boolean resolveDefMulti(DdzDef def, List<StructureAnchor> structureAnchors) {
+        StructureAnchor exact = findStructureAnchorByPath(def.unitPathSegments, structureAnchors);
+        if (exact != null) {
+            return exact.multi;
+        }
+        return def.rows.stream().anyMatch(r -> isMultiTag(r.getMultiTag()));
+    }
+
+    private StructureAnchor findStructureAnchorByPath(List<String> path, List<StructureAnchor> structureAnchors) {
+        for (StructureAnchor anchor : structureAnchors) {
+            if (Objects.equals(anchor.path, path)) {
+                return anchor;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 通过 DDZ 实体类反射出其声明的子 DDZ 名称（List<X4>/List<X5> -> X4/X5）。
+     */
+    private Set<String> resolveDeclaredChildDdzNames(String ddzName) {
+        Set<String> out = new LinkedHashSet<>();
+        try {
+            Class<?> clazz = Class.forName("com.example.entity.ddz." + ddzName);
+            for (Field f : clazz.getDeclaredFields()) {
+                Type genericType = f.getGenericType();
+                if (!(genericType instanceof ParameterizedType)) {
+                    continue;
+                }
+                ParameterizedType pt = (ParameterizedType) genericType;
+                Type rawType = pt.getRawType();
+                if (!(rawType instanceof Class) || !List.class.isAssignableFrom((Class<?>) rawType)) {
+                    continue;
+                }
+                Type[] args = pt.getActualTypeArguments();
+                if (args.length != 1 || !(args[0] instanceof Class)) {
+                    continue;
+                }
+                Class<?> argClass = (Class<?>) args[0];
+                if (argClass.getPackage() != null
+                        && "com.example.entity.ddz".equals(argClass.getPackage().getName())) {
+                    out.add(argClass.getSimpleName());
+                }
+            }
+        } catch (Exception ignore) {
+            // 非关键路径：解析失败时视为“未声明子 DDZ”。
+        }
+        return out;
+    }
+
+    private void writeLeafByRelativePath(Element unit, List<String> relative, Object value, boolean multi) {
+        if (relative == null || relative.isEmpty()) {
+            return;
+        }
+
+        Element cursor = unit;
+        for (int i = 0; i < relative.size() - 1; i++) {
+            String seg = relative.get(i);
+            Element next = cursor.element(seg);
+            if (next == null) {
+                next = cursor.addElement(seg);
+            }
+            cursor = next;
+        }
+
+        String leafName = relative.get(relative.size() - 1);
+        if (multi) {
+            List<Object> values = flattenToValues(value);
+            for (Object one : values) {
+                if (one == null) {
+                    continue;
+                }
+                cursor.addElement(leafName).setText(String.valueOf(one));
+            }
+            return;
+        }
+
+        Element leaf = cursor.element(leafName);
+        if (leaf == null) {
+            leaf = cursor.addElement(leafName);
+        }
+        leaf.setText(String.valueOf(value));
+    }
+
+    private List<Object> flattenToValues(Object value) {
+        if (value == null) {
+            return Collections.emptyList();
+        }
+        if (value instanceof Collection) {
+            return new ArrayList<>((Collection<?>) value);
+        }
+        Class<?> clazz = value.getClass();
+        if (clazz.isArray()) {
+            int len = java.lang.reflect.Array.getLength(value);
+            List<Object> out = new ArrayList<>(len);
+            for (int i = 0; i < len; i++) {
+                out.add(java.lang.reflect.Array.get(value, i));
+            }
+            return out;
+        }
+        return Collections.singletonList(value);
+    }
+
+    private boolean isMultiTag(String multiTag) {
+        return multiTag != null && "M".equalsIgnoreCase(multiTag.trim());
     }
 
     /**
@@ -621,6 +727,49 @@ public class XmlDdzTransformService {
         return segs.get(0);
     }
 
+    private static class StructureAnchor {
+        private final List<String> path;
+        private final boolean multi;
+
+        private StructureAnchor(List<String> path, boolean multi) {
+            this.path = path;
+            this.multi = multi;
+        }
+    }
+
+    private static class SeqWriteOp {
+        private final RspCfg fieldRow;
+        private final DdzDef childDef;
+
+        private SeqWriteOp(RspCfg fieldRow, DdzDef childDef) {
+            this.fieldRow = fieldRow;
+            this.childDef = childDef;
+        }
+
+        private static SeqWriteOp field(RspCfg row) {
+            return new SeqWriteOp(row, null);
+        }
+
+        private static SeqWriteOp child(DdzDef def) {
+            return new SeqWriteOp(null, def);
+        }
+
+        private int seq() {
+            if (fieldRow != null) {
+                return fieldRow.getFieldSeq() == null ? Integer.MAX_VALUE : fieldRow.getFieldSeq();
+            }
+            if (childDef == null || childDef.rows == null || childDef.rows.isEmpty()) {
+                return Integer.MAX_VALUE;
+            }
+            Integer min = childDef.rows.stream()
+                    .map(RspCfg::getFieldSeq)
+                    .filter(Objects::nonNull)
+                    .min(Integer::compareTo)
+                    .orElse(Integer.MAX_VALUE);
+            return min;
+        }
+    }
+
     /**
      * DDZ 定义：一个 ddzName 对应的一组配置与推导结构。
      */
@@ -629,8 +778,12 @@ public class XmlDdzTransformService {
         private String ddzName;
         /** 该 DDZ 对应的配置行 */
         private List<RspCfg> rows;
+        /** 该 DDZ 是否多值（任一配置行 multi_tag=M 即视为多值） */
+        private boolean multi;
         /** 对象单元路径（用于定位一个实例） */
         private List<String> unitPathSegments;
+        /** 在实体类中声明的子 DDZ（例如 X6 声明了 X4/X5） */
+        private Set<String> declaredChildren;
         /** 父 DDZ 名（根对象为空） */
         private String parentDdzName;
         /** 父对象 unitPath，便于写子对象时求相对路径 */
