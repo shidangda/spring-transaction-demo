@@ -166,10 +166,28 @@ public class XmlDdzTransformService {
 
     /**
      * 在同一个 unit 节点内，按 field_seq 顺序写“字段节点 + 子对象节点”。
+     *
+     * 关键点：
+     * 1) 先把“字段写入”与“子对象写入”都抽象为 SeqWriteOp，放进同一个队列；
+     * 2) 队列统一按 seq() 升序排序；
+     * 3) 再顺序执行，保证 XML 子节点顺序与配置表 field_seq 对齐。
+     *
+     * 示例（以 CdtTrfTxInf 为例）：
+     * - X4 对应最小 field_seq=10（子对象块）
+     * - X5.InstrId field_seq=12（字段）
+     * - X6.XchgRate field_seq=13（字段）
+     * 排序后执行顺序即：X4 -> InstrId -> XchgRate。
+     *
+     * 递归逻辑：
+     * 1、writeDdzUnitByFieldSeq方法在unit单元节点内，按 field_seq 顺序写def的字段节点和子对象节点
+     * 2、写字段节点时，写unit单元节点到字段节点的相对路径上的所有节点，此处无递归
+     * 3、写子对象节点时，写unit单元节点到子对象的unit单元节点的相对路径上的所有节点；递归构建子对象的单元节点
+     *
      */
     private void writeDdzUnitByFieldSeq(Element unit, DdzDef def, Map<String, Object> instance, Map<String, DdzDef> defs) {
         List<SeqWriteOp> ops = new ArrayList<>();
 
+        // 当前对象的“字段操作”入队
         for (RspCfg row : def.rows) {
             if (row.getFieldName() == null || row.getFieldName().trim().isEmpty()) {
                 continue;
@@ -177,6 +195,7 @@ public class XmlDdzTransformService {
             ops.add(SeqWriteOp.field(row));
         }
 
+        // 当前对象的“直接子对象操作”入队
         for (DdzDef child : defs.values()) {
             if (!def.ddzName.equals(child.parentDdzName)) {
                 continue;
@@ -184,8 +203,10 @@ public class XmlDdzTransformService {
             ops.add(SeqWriteOp.child(child));
         }
 
+        // 统一排序：字段和子对象按同一序号体系比较
         ops.sort(Comparator.comparingInt(SeqWriteOp::seq));
 
+        // 依序执行每个操作
         for (SeqWriteOp op : ops) {
             if (op.fieldRow != null) {
                 writeFieldByCfg(unit, def, instance, op.fieldRow);
@@ -204,6 +225,14 @@ public class XmlDdzTransformService {
         }
     }
 
+    /**
+     * 按一条字段配置（row）将值写入当前 unit。
+     *
+     * 规则：
+     * - 单字段且字段 xpath 就是 unitPath：直接写 unit 文本；
+     * - 其他情况：按相对路径写叶子节点；
+     * - multi_tag=M 时可写多个同名叶子。
+     */
     private void writeFieldByCfg(Element unit, DdzDef def, Map<String, Object> instance, RspCfg row) {
         String fieldName = row.getFieldName();
         Object value = instance.get(fieldName);
@@ -376,6 +405,18 @@ public class XmlDdzTransformService {
 
     /**
      * 推导一个 DDZ 对象的 unitPath。
+     *
+     * 参数说明：
+     * - rows: 当前 ddz_name 的字段配置行；
+     * - structureAnchors: 来自结构行的锚点集合；
+     * - preferStructureAnchor: 是否优先回退到结构锚点（容器型 DDZ 通常为 true）。
+     *
+     * 规则：
+     * 1) 先求 base 路径：
+     *    - 单字段：base = 字段 xpath
+     *    - 多字段：base = 多字段 xpath 的最长公共前缀
+     * 2) 若 preferStructureAnchor=false，直接返回 base；
+     * 3) 若 preferStructureAnchor=true，从结构锚点里找“最贴近 base 的祖先路径”作为 unitPath。
      */
     private List<String> inferUnitPath(List<RspCfg> rows, List<StructureAnchor> structureAnchors, boolean preferStructureAnchor) {
         List<String> base;
@@ -399,7 +440,12 @@ public class XmlDdzTransformService {
     }
 
     /**
-     * 从结构行中挑选“最贴近 base 的祖先路径”。
+     * 从结构锚点中挑选“最贴近 base 的祖先路径”（最长前缀）。
+     *
+     * 例：
+     * - base = /.../CdtTrfTxInf/XchgRate
+     * - 结构锚点候选：/.../CdtTrfTxInf, /.../CdtTrfTxInf/PmtId
+     *   其中只有 /.../CdtTrfTxInf 是 base 的祖先前缀，最终返回它。
      */
     private List<String> findBestStructureAnchor(List<String> base, List<StructureAnchor> structureAnchors) {
         List<String> best = Collections.emptyList();
@@ -414,6 +460,15 @@ public class XmlDdzTransformService {
         return best;
     }
 
+    /**
+     * 判定一个 DDZ 是否“对象可重复”（def.multi）。
+     *
+     * 优先级：
+     * 1) 若 unitPath 与某个结构锚点路径完全一致，则直接使用锚点的 multi；
+     * 2) 否则回退到字段行的 multi_tag（任一字段为 M 则视为多）。
+     *
+     * 这样可以避免：仅因字段行是 N，就把本应多包的对象误判为单包。
+     */
     private boolean resolveDefMulti(DdzDef def, List<StructureAnchor> structureAnchors) {
         StructureAnchor exact = findStructureAnchorByPath(def.unitPathSegments, structureAnchors);
         if (exact != null) {
@@ -422,6 +477,9 @@ public class XmlDdzTransformService {
         return def.rows.stream().anyMatch(r -> isMultiTag(r.getMultiTag()));
     }
 
+    /**
+     * 在结构锚点集合中按“路径完全相等”查找锚点。
+     */
     private StructureAnchor findStructureAnchorByPath(List<String> path, List<StructureAnchor> structureAnchors) {
         for (StructureAnchor anchor : structureAnchors) {
             if (Objects.equals(anchor.path, path)) {
@@ -552,33 +610,153 @@ public class XmlDdzTransformService {
     }
 
     /**
-     * 构建签名原文串：
-     * - 按 field_seq 升序
-     * - 每项格式 fieldName=value
-     * - 多值字段按 XML 出现顺序追加
-     * - 使用 | 连接
+     * 构建签名原文串。
+     *
+     * 与 writeDdzUnitByFieldSeq 的设计保持一致：
+     * - 都采用“统一操作队列 + seq 排序”思想；
+     * - 写 XML 时用 SeqWriteOp；签名拼接时用 SeqSignOp；
+     * - 目标都是让顺序严格贴合 field_seq 与结构层级。
+     *
+     * 关键规则：
+     * 1) 先把可签名字段（field_name 非空）按 field_seq 排序；
+     * 2) 递归按“最近下一层 multi 锚点”分组（例如 CdtTrfTxInf / PmtId）；
+     * 3) 每一层内把“单字段操作 + 分组操作”统一为 SeqSignOp 再排序；
+     * 4) 组内按父实例出现顺序处理，确保 EndToEndId/TxId 这类字段按“同包组合”拼接。
      */
     private String buildSignPlainText(List<RspCfg> cfgList, Element root) {
-        List<RspCfg> sorted = cfgList.stream()
+        List<RspCfg> signRows = cfgList.stream()
+                .filter(r -> r.getFieldName() != null && !r.getFieldName().trim().isEmpty())
                 .sorted(Comparator.comparing(RspCfg::getFieldSeq, Comparator.nullsLast(Integer::compareTo)))
                 .collect(Collectors.toList());
 
+        List<StructureAnchor> structureAnchors = cfgList.stream()
+                .filter(c -> c.getDdzName() == null || c.getDdzName().trim().isEmpty())
+                .map(c -> new StructureAnchor(splitPath(c.getXpath()), isMultiTag(c.getMultiTag())))
+                .filter(a -> !a.path.isEmpty())
+                .collect(Collectors.toList());
+
         List<String> parts = new ArrayList<>();
-        for (RspCfg row : sorted) {
-            List<String> full = splitPath(row.getXpath());
-            if (full.isEmpty()) {
+        List<String> rootPath = Collections.singletonList(root.getName());
+        appendSignPartsByContext(parts, root, rootPath, signRows, structureAnchors);
+        return String.join("|", parts);
+    }
+
+    /**
+     * 在某个上下文节点（context）内递归拼签名。
+     *
+     * 这段是签名串的“主调度器”，相当于写 XML 时的 writeDdzUnitByFieldSeq：
+     * - 先把 rows 拆成两类：
+     *   a) standalone：在当前层可直接取值的字段；
+     *   b) grouped：需要进入下一层 multi 锚点后再处理的字段组。
+     * - 再把两类都包装成 SeqSignOp，统一按 seq() 排序后执行。
+     *
+     * 这样可以保证：
+     * - 同层字段与分组块顺序可比较；
+     * - 分组块内部按“父实例顺序”递归，保持同包字段组合关系。
+     */
+    private void appendSignPartsByContext(List<String> parts,
+                                          Element context,
+                                          List<String> contextPath,
+                                          List<RspCfg> rows,
+                                          List<StructureAnchor> anchors) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+
+        Map<List<String>, List<RspCfg>> grouped = new LinkedHashMap<>();
+        List<RspCfg> standalone = new ArrayList<>();
+
+        for (RspCfg row : rows) {
+            List<String> rowPath = splitPath(row.getXpath());
+            if (!isPrefix(contextPath, rowPath)) {
                 continue;
             }
-            List<String> relative = full.subList(1, full.size());
-            List<Element> leaves = selectElements(root, relative);
-            for (Element leaf : leaves) {
-                String value = leaf.getTextTrim();
-                if (value != null && !value.isEmpty()) {
-                    parts.add(row.getFieldName() + "=" + value);
-                }
+            List<String> nextAnchor = findNextMultiAnchor(rowPath, contextPath, anchors);
+            if (nextAnchor.isEmpty()) {
+                standalone.add(row);
+            } else {
+                grouped.computeIfAbsent(nextAnchor, k -> new ArrayList<>()).add(row);
             }
         }
-        return String.join("|", parts);
+
+        List<SeqSignOp> ops = new ArrayList<>();
+        for (RspCfg row : standalone) {
+            ops.add(SeqSignOp.single(row));
+        }
+        for (Map.Entry<List<String>, List<RspCfg>> e : grouped.entrySet()) {
+            ops.add(SeqSignOp.group(e.getKey(), e.getValue()));
+        }
+        ops.sort(Comparator.comparingInt(SeqSignOp::seq));
+
+        for (SeqSignOp op : ops) {
+            if (op.singleRow != null) {
+                appendRowValuesInContext(parts, context, contextPath, op.singleRow);
+                continue;
+            }
+
+            List<String> relAnchorPath = op.anchorPath.subList(contextPath.size(), op.anchorPath.size());
+            List<Element> units = selectElements(context, relAnchorPath);
+            for (Element unit : units) {
+                appendSignPartsByContext(parts, unit, op.anchorPath, op.groupRows, anchors);
+            }
+        }
+    }
+
+    /**
+     * 在当前 context 内追加某个字段 row 的签名项。
+     *
+     * 注意：这里限定在 contextPath 作用域内取值，避免跨包“串值”。
+     */
+    private void appendRowValuesInContext(List<String> parts, Element context, List<String> contextPath, RspCfg row) {
+        List<String> full = splitPath(row.getXpath());
+        if (full.isEmpty() || !isPrefix(contextPath, full)) {
+            return;
+        }
+        List<String> relative = full.subList(contextPath.size(), full.size());
+        List<Element> leaves = selectElements(context, relative);
+        for (Element leaf : leaves) {
+            String value = leaf.getTextTrim();
+            if (value != null && !value.isEmpty()) {
+                parts.add(row.getFieldName() + "=" + value);
+            }
+        }
+    }
+
+    /**
+     * 找到 leafPath 在当前 context 下“最近的下一层 multi 锚点”。
+     *
+     * 条件：
+     * - 锚点必须是 multi；
+     * - 锚点必须在 contextPath 之下；
+     * - 锚点必须是 leafPath 的前缀；
+     * - 多个候选时取“最浅但比 context 深一层及以上”的最近锚点（路径最短）。
+     *
+     * 目的：逐层下钻分组，而不是一次跳到底层，
+     * 从而保持签名拼接顺序与 XML 结构层级一致。
+     */
+    private List<String> findNextMultiAnchor(List<String> leafPath, List<String> contextPath, List<StructureAnchor> anchors) {
+        List<String> best = Collections.emptyList();
+        int bestLen = Integer.MAX_VALUE;
+        for (StructureAnchor anchor : anchors) {
+            if (!anchor.multi) {
+                continue;
+            }
+            List<String> path = anchor.path;
+            if (path.size() <= contextPath.size()) {
+                continue;
+            }
+            if (!isPrefix(contextPath, path)) {
+                continue;
+            }
+            if (!isPrefix(path, leafPath)) {
+                continue;
+            }
+            if (path.size() < bestLen) {
+                best = path;
+                bestLen = path.size();
+            }
+        }
+        return best;
     }
 
     /**
@@ -727,8 +905,23 @@ public class XmlDdzTransformService {
         return segs.get(0);
     }
 
+    /**
+     * 结构锚点（StructureAnchor）：
+     * 对应 rsp_cfg_t 中 ddz_name 为空的“结构行”。
+     *
+     * 为什么要有这个类：
+     * - 字段行（ddz_name 非空）描述“叶子值映射”；
+     * - 结构行（ddz_name 为空）描述“层级骨架与是否可重复”。
+     *
+     * 这两个信息都必须用到：
+     * 1) unitPath/父子推导：需要结构骨架避免把容器对象锚到叶子；
+     * 2) 对象多值判定：应优先看结构节点是否 multi；
+     * 3) 签名分组：需要按 multi 锚点逐层分包，避免跨包串值。
+     */
     private static class StructureAnchor {
+        /** 结构节点路径（已 split），例如 [FIToFICstmrCdtTrf, CdtTrfTxInf, PmtId] */
         private final List<String> path;
+        /** 该结构节点是否可重复（multi_tag=M） */
         private final boolean multi;
 
         private StructureAnchor(List<String> path, boolean multi) {
@@ -737,8 +930,19 @@ public class XmlDdzTransformService {
         }
     }
 
+    /**
+     * XML 写入阶段的“顺序操作”抽象：
+     * - fieldRow != null：表示“写一个字段”；
+     * - childDef != null：表示“写一个子对象块”。
+     *
+     * 设计目的：
+     * 让字段与子对象可以放在同一列表里统一排序，
+     * 从而按 field_seq 精确控制最终 XML 子节点顺序。
+     */
     private static class SeqWriteOp {
+        /** 字段操作载荷（二选一） */
         private final RspCfg fieldRow;
+        /** 子对象操作载荷（二选一） */
         private final DdzDef childDef;
 
         private SeqWriteOp(RspCfg fieldRow, DdzDef childDef) {
@@ -746,14 +950,28 @@ public class XmlDdzTransformService {
             this.childDef = childDef;
         }
 
+        /** 工厂方法：构造“字段写入”操作 */
         private static SeqWriteOp field(RspCfg row) {
             return new SeqWriteOp(row, null);
         }
 
+        /** 工厂方法：构造“子对象写入”操作 */
         private static SeqWriteOp child(DdzDef def) {
             return new SeqWriteOp(null, def);
         }
 
+        /**
+         * 返回当前操作的排序序号。
+         *
+         * - 字段操作：直接使用该字段的 field_seq；
+         * - 子对象操作：使用该子对象“所有字段中最小 field_seq”。
+         *
+         * 示例：
+         * 子对象 X4 有字段：
+         *   EndToEndId(field_seq=10), TxId(field_seq=11)
+         * 则 SeqWriteOp.child(X4).seq() = 10。
+         * 这意味着整个 X4 子对象块会排在 field_seq=12 的 InstrId 之前。
+         */
         private int seq() {
             if (fieldRow != null) {
                 return fieldRow.getFieldSeq() == null ? Integer.MAX_VALUE : fieldRow.getFieldSeq();
@@ -771,14 +989,70 @@ public class XmlDdzTransformService {
     }
 
     /**
-     * DDZ 定义：一个 ddzName 对应的一组配置与推导结构。
+     * 签名拼接阶段的“顺序操作”抽象（与 SeqWriteOp 同风格）。
+     *
+     * - singleRow != null：表示“直接拼一个字段”；
+     * - anchorPath/groupRows != null：表示“进入一个分组锚点继续递归拼接”。
+     *
+     * 设计目的：
+     * 把“单字段拼接”和“分组递归拼接”放在同一队列里排序，
+     * 让签名串顺序与写 XML 顺序共享同一套 seq 语义。
+     */
+    private static class SeqSignOp {
+        /** 单字段操作载荷（二选一） */
+        private final RspCfg singleRow;
+        /** 分组锚点路径（二选一） */
+        private final List<String> anchorPath;
+        /** 该分组下待处理字段 */
+        private final List<RspCfg> groupRows;
+
+        private SeqSignOp(RspCfg singleRow, List<String> anchorPath, List<RspCfg> groupRows) {
+            this.singleRow = singleRow;
+            this.anchorPath = anchorPath;
+            this.groupRows = groupRows;
+        }
+
+        /** 工厂方法：构造“单字段拼接”操作 */
+        private static SeqSignOp single(RspCfg row) {
+            return new SeqSignOp(row, null, null);
+        }
+
+        /** 工厂方法：构造“分组递归拼接”操作 */
+        private static SeqSignOp group(List<String> anchorPath, List<RspCfg> rows) {
+            return new SeqSignOp(null, anchorPath, rows);
+        }
+
+        /**
+         * 返回当前操作的排序序号：
+         * - 单字段：取字段自身 field_seq；
+         * - 分组：取分组内最小 field_seq（等价于该分组在当前层的起始位置）。
+         */
+        private int seq() {
+            if (singleRow != null) {
+                return singleRow.getFieldSeq() == null ? Integer.MAX_VALUE : singleRow.getFieldSeq();
+            }
+            if (groupRows == null || groupRows.isEmpty()) {
+                return Integer.MAX_VALUE;
+            }
+            return groupRows.stream()
+                    .map(RspCfg::getFieldSeq)
+                    .filter(Objects::nonNull)
+                    .min(Integer::compareTo)
+                    .orElse(Integer.MAX_VALUE);
+        }
+    }
+
+    /**
+     * DDZ 定义：接口对象配置定义，一个 ddzName 对应的一组配置与推导结构。
+     * 概念解释：
+     * unitPath：表示“一个 DDZ接口实例在 XML 里对应的单位节点路径”。可以理解成，这个 DDZ接口实例在 XML 中‘挂在哪个节点上’
      */
     private static class DdzDef {
         /** DDZ 名称（如 X1/X4） */
         private String ddzName;
-        /** 该 DDZ 对应的配置行 */
+        /** 该 DDZ 对应的配置行，DDZ接口可能有多个字段配置行 */
         private List<RspCfg> rows;
-        /** 该 DDZ 是否多值（任一配置行 multi_tag=M 即视为多值） */
+        /** 该 DDZ 是否多值（注意DDZ接口是否是多包，是通过结构锚点判定的，与配置表记录的多包表示区分） */
         private boolean multi;
         /** 对象单元路径（用于定位一个实例） */
         private List<String> unitPathSegments;
