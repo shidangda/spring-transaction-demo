@@ -4,6 +4,7 @@ import com.example.entity.RspCfg;
 import com.example.service.message.transform.TransformDefinitionResolver.DdzDef;
 import lombok.RequiredArgsConstructor;
 import org.dom4j.Element;
+import org.dom4j.Node;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -18,28 +19,28 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class DdzToXmlPacker {
 
-    public void pack(Element root, Map<String, Object> dtoMap, Map<String, DdzDef> defs) {
+    public void pack(Element root, Map<String, Object> dtoMap, Map<String, DdzDef> defs, Map<String, Integer> childOrderIndex) {
         for (DdzDef def : defs.values()) {
             if (def.getParentDdzName() != null) {
                 continue;
             }
             List<Map<String, Object>> instances = castInstanceList(dtoMap.get(def.getDdzName()));
             if (!def.isMulti() && !instances.isEmpty()) {
-                writeDdzInstance(root, def, instances.get(0), defs);
+                writeDdzInstance(root, def, instances.get(0), defs, childOrderIndex);
                 continue;
             }
             for (Map<String, Object> instance : instances) {
-                writeDdzInstance(root, def, instance, defs);
+                writeDdzInstance(root, def, instance, defs, childOrderIndex);
             }
         }
     }
 
-    private void writeDdzInstance(Element root, DdzDef def, Map<String, Object> instance, Map<String, DdzDef> defs) {
-        Element unit = createUnitElement(root, def.getUnitPathSegments());
-        writeDdzUnitByFieldSeq(unit, def, instance, defs);
+    private void writeDdzInstance(Element root, DdzDef def, Map<String, Object> instance, Map<String, DdzDef> defs, Map<String, Integer> childOrderIndex) {
+        Element unit = createUnitElement(root, def.getUnitPathSegments(), childOrderIndex);
+        writeDdzUnitByFieldSeq(unit, def, instance, defs, childOrderIndex);
     }
 
-    private void writeDdzChildInstance(Element parentUnit, DdzDef childDef, Map<String, Object> childInstance, Map<String, DdzDef> defs) {
+    private void writeDdzChildInstance(Element parentUnit, DdzDef childDef, Map<String, Object> childInstance, Map<String, DdzDef> defs, Map<String, Integer> childOrderIndex) {
         List<String> parentPath = childDef.getParentUnitPathSegments();
         List<String> childPath = childDef.getUnitPathSegments();
         List<String> relative = childPath.subList(parentPath.size(), childPath.size());
@@ -59,10 +60,10 @@ public class DdzToXmlPacker {
             }
         }
 
-        writeDdzUnitByFieldSeq(cursor, childDef, childInstance, defs);
+        writeDdzUnitByFieldSeq(cursor, childDef, childInstance, defs, childOrderIndex);
     }
 
-    private void writeDdzUnitByFieldSeq(Element unit, DdzDef def, Map<String, Object> instance, Map<String, DdzDef> defs) {
+    private void writeDdzUnitByFieldSeq(Element unit, DdzDef def, Map<String, Object> instance, Map<String, DdzDef> defs, Map<String, Integer> childOrderIndex) {
         List<SeqWriteOp> ops = new ArrayList<>();
 
         for (RspCfg row : def.getRows()) {
@@ -76,7 +77,7 @@ public class DdzToXmlPacker {
             if (!def.getDdzName().equals(child.getParentDdzName())) {
                 continue;
             }
-            ops.add(SeqWriteOp.child(child));
+            ops.add(SeqWriteOp.child(def, child, childOrderIndex));
         }
 
         ops.sort(Comparator.comparingInt(SeqWriteOp::seq));
@@ -90,11 +91,11 @@ public class DdzToXmlPacker {
             DdzDef child = op.childDef;
             List<Map<String, Object>> childInstances = castInstanceList(instance.get(child.getDdzName()));
             if (!child.isMulti() && !childInstances.isEmpty()) {
-                writeDdzChildInstance(unit, child, childInstances.get(0), defs);
+                writeDdzChildInstance(unit, child, childInstances.get(0), defs, childOrderIndex);
                 continue;
             }
             for (Map<String, Object> childInstance : childInstances) {
-                writeDdzChildInstance(unit, child, childInstance, defs);
+                writeDdzChildInstance(unit, child, childInstance, defs, childOrderIndex);
             }
         }
     }
@@ -178,23 +179,78 @@ public class DdzToXmlPacker {
         return multiTag != null && "M".equalsIgnoreCase(multiTag.trim());
     }
 
-    private Element createUnitElement(Element root, List<String> fullPath) {
+    private Element createUnitElement(Element root, List<String> fullPath, Map<String, Integer> childOrderIndex) {
         List<String> relative = fullPath.subList(1, fullPath.size());
         Element cursor = root;
+        List<String> currentPath = new ArrayList<>();
+        currentPath.add(root.getName());
+
         for (int i = 0; i < relative.size(); i++) {
             String seg = relative.get(i);
             boolean isLast = i == relative.size() - 1;
+
             if (isLast) {
-                cursor = cursor.addElement(seg);
+                // unit 本身也要按全局顺序插入，避免跨 DDZ 的同层顺序错位
+                cursor = addElementByGlobalOrder(cursor, currentPath, seg, childOrderIndex);
             } else {
                 Element next = cursor.element(seg);
                 if (next == null) {
-                    next = cursor.addElement(seg);
+                    next = addElementByGlobalOrder(cursor, currentPath, seg, childOrderIndex);
                 }
                 cursor = next;
+                currentPath.add(seg);
             }
         }
         return cursor;
+    }
+
+    private Element addElementByGlobalOrder(Element parent,
+                                            List<String> parentPath,
+                                            String childName,
+                                            Map<String, Integer> childOrderIndex) {
+        if (childOrderIndex == null || childOrderIndex.isEmpty()) {
+            return parent.addElement(childName);
+        }
+
+        String parentKey = "/" + String.join("/", parentPath);
+        String selfKey = parentKey + ">" + childName;
+        Integer selfSeq = childOrderIndex.get(selfKey);
+
+        @SuppressWarnings("unchecked")
+        List<Element> siblings = parent.elements();
+        int insertAt = siblings.size();
+        if (selfSeq != null) {
+            for (int i = 0; i < siblings.size(); i++) {
+                Element sib = siblings.get(i);
+                Integer sibSeq = childOrderIndex.get(parentKey + ">" + sib.getName());
+                if (sibSeq != null && sibSeq > selfSeq) {
+                    insertAt = i;
+                    break;
+                }
+            }
+        }
+
+        Element newChild = parent.addElement(childName);
+        if (insertAt < siblings.size()) {
+            @SuppressWarnings("unchecked")
+            List<Node> content = parent.content();
+            if (!content.isEmpty()) {
+                Node justAdded = content.remove(content.size() - 1);
+                int targetIndex = 0;
+                int seenElements = 0;
+                for (; targetIndex < content.size(); targetIndex++) {
+                    Node node = content.get(targetIndex);
+                    if (node instanceof Element) {
+                        if (seenElements == insertAt) {
+                            break;
+                        }
+                        seenElements++;
+                    }
+                }
+                content.add(targetIndex, justAdded);
+            }
+        }
+        return newChild;
     }
 
     private List<Map<String, Object>> castInstanceList(Object v) {
@@ -220,23 +276,29 @@ public class DdzToXmlPacker {
     private static class SeqWriteOp {
         private final RspCfg fieldRow;
         private final DdzDef childDef;
+        private final Integer childOrderSeq;
 
-        private SeqWriteOp(RspCfg fieldRow, DdzDef childDef) {
+        private SeqWriteOp(RspCfg fieldRow, DdzDef childDef, Integer childOrderSeq) {
             this.fieldRow = fieldRow;
             this.childDef = childDef;
+            this.childOrderSeq = childOrderSeq;
         }
 
         private static SeqWriteOp field(RspCfg row) {
-            return new SeqWriteOp(row, null);
+            return new SeqWriteOp(row, null, null);
         }
 
-        private static SeqWriteOp child(DdzDef def) {
-            return new SeqWriteOp(null, def);
+        private static SeqWriteOp child(DdzDef parent, DdzDef child, Map<String, Integer> childOrderIndex) {
+            Integer seq = resolveChildSeq(parent, child, childOrderIndex);
+            return new SeqWriteOp(null, child, seq);
         }
 
         private int seq() {
             if (fieldRow != null) {
                 return fieldRow.getFieldSeq() == null ? Integer.MAX_VALUE : fieldRow.getFieldSeq();
+            }
+            if (childOrderSeq != null) {
+                return childOrderSeq;
             }
             if (childDef == null || childDef.getRows() == null || childDef.getRows().isEmpty()) {
                 return Integer.MAX_VALUE;
@@ -246,6 +308,24 @@ public class DdzToXmlPacker {
                     .filter(Objects::nonNull)
                     .min(Integer::compareTo)
                     .orElse(Integer.MAX_VALUE);
+        }
+
+        private static Integer resolveChildSeq(DdzDef parent, DdzDef child, Map<String, Integer> childOrderIndex) {
+            if (parent == null || child == null || childOrderIndex == null) {
+                return null;
+            }
+            List<String> parentPath = parent.getUnitPathSegments();
+            List<String> childPath = child.getUnitPathSegments();
+            if (parentPath == null || childPath == null || childPath.size() <= parentPath.size()) {
+                return null;
+            }
+            String childNodeName = childPath.get(parentPath.size());
+            String key = pathKey(parentPath) + ">" + childNodeName;
+            return childOrderIndex.get(key);
+        }
+
+        private static String pathKey(List<String> path) {
+            return "/" + String.join("/", path);
         }
     }
 }

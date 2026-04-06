@@ -52,7 +52,7 @@ public class XmlDdzTransformService {
 
         Document doc = DocumentHelper.createDocument();
         Element root = doc.addElement(meta.getRootName());
-        ddzToXmlPacker.pack(root, dtoMap, meta.getDefs());
+        ddzToXmlPacker.pack(root, dtoMap, meta.getDefs(), meta.getChildOrderIndex());
 
         String xml = toPrettyXml(doc);
         String signPlainText = signPlainTextBuilder.build(cfgList, root);
