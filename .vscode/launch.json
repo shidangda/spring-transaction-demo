@@ -1,0 +1,40 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "type": "java",
+            "name": "SpringTransactionDemoApplication",
+            "request": "launch",
+            "mainClass": "SpringTransactionDemoApplication",
+            "projectName": "spring-transaction-demo"
+        },
+        {
+            "type": "java",
+            "name": "Debug Spring Boot App",
+            "request": "launch",
+            "mainClass": "com.example.SpringTransactionDemoApplication",
+            "projectName": "spring-transaction-demo",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "vmArgs": "-Dfile.encoding=UTF-8"
+        },
+        {
+            "type": "java",
+            "name": "Run Spring Boot App",
+            "request": "launch",
+            "mainClass": "com.example.SpringTransactionDemoApplication",
+            "projectName": "spring-transaction-demo",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "vmArgs": "-Dfile.encoding=UTF-8"
+        },
+        {
+            "type": "java",
+            "name": "Attach to Remote",
+            "request": "attach",
+            "hostName": "localhost",
+            "port": 5005
+        }
+    ]
+}

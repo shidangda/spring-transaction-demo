@@ -1,0 +1,278 @@
+[
+    // ========================================
+    // 调试快捷键（完全按照 IDEA）
+    // ========================================
+    // 先禁用 VS Code 默认的调试快捷键
+    {
+        "key": "f10",
+        "command": "-workbench.action.debug.stepOver",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "f11",
+        "command": "-workbench.action.debug.stepInto",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "shift+f11",
+        "command": "-workbench.action.debug.stepOut",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "shift+f5",
+        "command": "-workbench.action.debug.stop",
+        "when": "inDebugMode"
+    },
+    // 配置 IDEA 风格的调试快捷键
+    {
+        "key": "shift+f9",
+        "command": "workbench.action.debug.start",
+        "when": "!inDebugMode"
+    },
+    {
+        "key": "f9",
+        "command": "workbench.action.debug.continue",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "f8",
+        "command": "workbench.action.debug.stepOver",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "f7",
+        "command": "workbench.action.debug.stepInto",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "shift+f8",
+        "command": "workbench.action.debug.stepOut",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "shift+f7",
+        "command": "workbench.action.debug.stepInto",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "ctrl+f8",
+        "command": "editor.debug.action.toggleBreakpoint"
+    },
+    {
+        "key": "ctrl+shift+f8",
+        "command": "workbench.debug.viewlet.action.toggleBreakpointsActivatedAction"
+    },
+    {
+        "key": "alt+f9",
+        "command": "editor.debug.action.runToCursor",
+        "when": "debugState == 'stopped'"
+    },
+    {
+        "key": "alt+f8",
+        "command": "editor.debug.action.selectionToRepl",
+        "when": "editorTextFocus && inDebugMode"
+    },
+    {
+        "key": "ctrl+f2",
+        "command": "workbench.action.debug.stop",
+        "when": "inDebugMode"
+    },
+    {
+        "key": "alt+shift+f9",
+        "command": "workbench.action.debug.selectandstart",
+        "when": "!inDebugMode"
+    },
+    {
+        "key": "alt+shift+f10",
+        "command": "workbench.action.debug.selectandstart",
+        "when": "!inDebugMode"
+    },
+    {
+        "key": "f2",
+        "command": "editor.action.marker.next",
+        "when": "editorFocus"
+    },
+    {
+        "key": "shift+f2",
+        "command": "editor.action.marker.prev",
+        "when": "editorFocus"
+    },
+    {
+        "key": "ctrl+shift+f5",
+        "command": "workbench.action.debug.restart",
+        "when": "inDebugMode"
+    },
+    {
+        "key": "alt+f10",
+        "command": "editor.action.showHover",
+        "when": "editorTextFocus"
+    },
+    // ========================================
+    // 编辑快捷键（完全按照 IDEA）
+    // ========================================
+    {
+        "key": "ctrl+alt+l",
+        "command": "editor.action.formatDocument",
+        "when": "editorHasDocumentFormattingProvider && editorTextFocus && !editorReadonly"
+    },
+    {
+        "key": "ctrl+d",
+        "command": "editor.action.copyLinesDownAction",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+y",
+        "command": "editor.action.deleteLines",
+        "when": "editorTextFocus && !editorReadonly"
+    },
+    {
+        "key": "shift+f6",
+        "command": "editor.action.rename",
+        "when": "editorHasRenameProvider && editorTextFocus && !editorReadonly"
+    },
+    {
+        "key": "ctrl+w",
+        "command": "editor.action.smartSelect.expand",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+shift+w",
+        "command": "editor.action.smartSelect.shrink",
+        "when": "editorTextFocus"
+    },
+    // ========================================
+    // 导航快捷键（完全按照 IDEA）
+    // ========================================
+    {
+        "key": "ctrl+b",
+        "command": "editor.action.revealDefinition",
+        "when": "editorHasDefinitionProvider && editorTextFocus"
+    },
+    {
+        "key": "ctrl+alt+b",
+        "command": "editor.action.goToImplementation",
+        "when": "editorHasImplementationProvider && editorTextFocus"
+    },
+    {
+        "key": "alt+f7",
+        "command": "references-view.findReferences",
+        "when": "editorHasReferenceProvider"
+    },
+    {
+        "key": "ctrl+alt+left",
+        "command": "workbench.action.navigateBack"
+    },
+    {
+        "key": "ctrl+alt+right",
+        "command": "workbench.action.navigateForward"
+    },
+    {
+        "key": "ctrl+e",
+        "command": "workbench.action.quickOpen"
+    },
+    {
+        "key": "ctrl+shift+n",
+        "command": "workbench.action.quickOpen"
+    },
+    {
+        "key": "ctrl+n",
+        "command": "workbench.action.quickOpen"
+    },
+    {
+        "key": "ctrl+f12",
+        "command": "workbench.action.gotoSymbol"
+    },
+    // ========================================
+    // 窗口管理快捷键（完全按照 IDEA）
+    // ========================================
+    {
+        "key": "alt+1",
+        "command": "workbench.view.explorer"
+    },
+    {
+        "key": "alt+4",
+        "command": "workbench.action.terminal.toggleTerminal"
+    },
+    {
+        "key": "alt+5",
+        "command": "workbench.view.debug"
+    },
+    {
+        "key": "alt+9",
+        "command": "workbench.view.scm"
+    },
+    {
+        "key": "alt+f12",
+        "command": "workbench.action.terminal.toggleTerminal"
+    },
+    {
+        "key": "ctrl+shift+f12",
+        "command": "workbench.action.toggleMaximizedPanel"
+    },
+    {
+        "key": "ctrl+f4",
+        "command": "workbench.action.closeActiveEditor"
+    },
+    // ========================================
+    // 代码生成和补全（完全按照 IDEA）
+    // ========================================
+    {
+        "key": "ctrl+space",
+        "command": "editor.action.triggerSuggest",
+        "when": "editorHasCompletionItemProvider && editorTextFocus && !editorReadonly"
+    },
+    {
+        "key": "ctrl+shift+space",
+        "command": "editor.action.triggerParameterHints",
+        "when": "editorHasSignatureHelpProvider && editorTextFocus"
+    },
+    {
+        "key": "ctrl+p",
+        "command": "editor.action.triggerParameterHints",
+        "when": "editorHasSignatureHelpProvider && editorTextFocus"
+    },
+    {
+        "key": "alt+insert",
+        "command": "editor.action.sourceAction",
+        "when": "editorTextFocus"
+    },
+    // ========================================
+    // 搜索快捷键（完全按照 IDEA）
+    // ========================================
+    {
+        "key": "shift shift",
+        "command": "workbench.action.showCommands"
+    },
+    {
+        "key": "ctrl+shift+a",
+        "command": "workbench.action.showCommands"
+    },
+    {
+        "key": "ctrl+h",
+        "command": "editor.action.startFindReplaceAction",
+        "when": "editorFocus"
+    },
+    {
+        "key": "ctrl+shift+f",
+        "command": "workbench.action.findInFiles"
+    },
+    {
+        "key": "ctrl+shift+r",
+        "command": "workbench.action.replaceInFiles"
+    },
+    // ========================================
+    // 运行和调试（完全按照 IDEA）
+    // ========================================
+    {
+        "key": "shift+f10",
+        "command": "workbench.action.debug.run"
+    },
+    {
+        "key": "ctrl+shift+f10",
+        "command": "java.debug.runJavaFile"
+    },
+    {
+        "key": "ctrl+shift+f9",
+        "command": "java.debug.debugJavaFile"
+    }
+]

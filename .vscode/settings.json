@@ -1,0 +1,199 @@
+{
+  "diffEditor.renderSideBySide": true,
+  "diffEditor.renderIndicators": false,
+  "diffEditor.ignoreTrimWhitespace": false,
+  "editor.accessibilitySupport": "on"
+}
+
+{
+    // ========================================
+    // 主题配置（类似 IntelliJ IDEA）
+    // ========================================
+    "workbench.colorTheme": "Darcula",
+    "workbench.iconTheme": "material-icon-theme",
+    // 导航历史配置（完全像 IDEA）
+    "workbench.editor.navigationScope": "editorGroup",
+    "workbench.editor.limit.enabled": false,
+    "workbench.colorCustomizations": {
+        "editor.background": "#2b2b2b",
+        "sideBar.background": "#3c3f41",
+        "activityBar.background": "#3c3f41",
+        // 调试时的当前行高亮（超明显！）
+        "editor.stackFrameHighlightBackground": "#ffff0033",
+        "editor.focusedStackFrameHighlightBackground": "#00ff0044",
+        // 断点颜色增强
+        "debugIcon.breakpointForeground": "#ff0000",
+        "debugIcon.breakpointDisabledForeground": "#848484",
+        "debugIcon.breakpointUnverifiedForeground": "#ffa500"
+    },
+    // ========================================
+    // Java 核心配置
+    // ========================================
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.autobuild.enabled": true,
+    "java.codeGeneration.generateComments": true,
+    "java.codeGeneration.useBlocks": true,
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-1.8",
+            "path": "C:\\Users\\Admin\\.jdks\\corretto-1.8.0_442"
+        }
+    ],
+    // ========================================
+    // 调试配置（类似 IDEA）
+    // ========================================
+    "java.debug.settings.hotCodeReplace": "auto",
+    "java.debug.settings.console": "integratedTerminal",
+    "java.debug.settings.showHex": false,
+    "java.debug.settings.showStaticVariables": true,
+    "java.debug.settings.showQualifiedNames": false,
+    "java.debug.settings.maxStringLength": 0,
+    "java.debug.settings.enableRunDebugCodeLens": true,
+    "java.debug.settings.showInlineValues": true,
+    "java.debug.settings.forceBuildBeforeLaunch": true,
+    // 调试视觉增强（让当前执行行更明显）
+    "debug.inlineValues": true,
+    "debug.showInStatusBar": "always",
+    "debug.internalConsoleOptions": "neverOpen",
+    "debug.openDebug": "openOnDebugBreak",
+    "debug.focusWindowOnBreak": true,
+    "debug.showBreakpointsInOverviewRuler": true,
+    // ========================================
+    // 项目路径配置
+    // ========================================
+    "java.project.sourcePaths": [
+        "src/main/java"
+    ],
+    "java.project.resourcePaths": [
+        "src/main/resources"
+    ],
+    "java.project.outputPath": "target/classes",
+    // ========================================
+    // Maven 配置
+    // ========================================
+    "maven.executable.path": "mvn",
+    "maven.terminal.useJavaHome": true,
+    "maven.view": "hierarchical",
+    // ========================================
+    // Spring Boot 配置
+    // ========================================
+    "spring-boot.ls.java.home": "",
+    "spring.initializr.defaultLanguage": "Java",
+    // ========================================
+    // 编码和文件配置
+    // ========================================
+    "files.encoding": "utf8",
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    // ========================================
+    // 编辑器配置（类似 IDEA）
+    // ========================================
+    "editor.suggestSelection": "first",
+    "editor.quickSuggestions": {
+        "other": true,
+        "comments": false,
+        "strings": false
+    },
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": true,
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": true,
+    "editor.minimap.enabled": true,
+    "editor.lineNumbers": "on",
+    "editor.renderWhitespace": "selection",
+    // Ctrl + Click 跳转配置（完全像 IDEA）
+    "editor.gotoLocation.multipleDefinitions": "goto",
+    "editor.gotoLocation.multipleTypeDefinitions": "goto",
+    "editor.gotoLocation.multipleDeclarations": "goto",
+    "editor.gotoLocation.multipleImplementations": "goto",
+    "editor.gotoLocation.multipleReferences": "goto",
+    // 鼠标悬停配置（像 IDEA 一样显示文档）
+    "editor.hover.enabled": true,
+    "editor.hover.delay": 300,
+    "editor.hover.sticky": true,
+    // ========================================
+    // 代码提示和补全
+    // ========================================
+    "editor.acceptSuggestionOnEnter": "on",
+    "editor.suggestOnTriggerCharacters": true,
+    "editor.wordBasedSuggestions": "matchingDocuments",
+    // ========================================
+    // 问题面板配置
+    // ========================================
+    "problems.decorations.enabled": true,
+    "problems.showCurrentInStatus": true,
+    // ========================================
+    // Git 配置
+    // ========================================
+    "git.enableSmartCommit": true,
+    "git.confirmSync": false,
+    "git.autofetch": true,
+    // ========================================
+    // 终端配置
+    // ========================================
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.fontSize": 14,
+    // ========================================
+    // IDEA 风格增强配置
+    // ========================================
+    // 字体配置（类似 IDEA）
+    "editor.fontFamily": "'JetBrains Mono', 'Consolas', 'Courier New', monospace",
+    "editor.fontSize": 14,
+    "editor.lineHeight": 1.6,
+    "editor.fontLigatures": true,
+    // 光标配置
+    "editor.cursorStyle": "line",
+    "editor.cursorBlinking": "smooth",
+    "editor.cursorSmoothCaretAnimation": "on",
+    // 滚动配置
+    "editor.smoothScrolling": true,
+    "workbench.list.smoothScrolling": true,
+    // 面包屑导航
+    "breadcrumbs.enabled": true,
+    "breadcrumbs.symbolPath": "on",
+    // 代码镜头（Run | Debug 按钮）
+    "java.debug.settings.enableRunDebugCodeLens": true,
+    "java.test.defaultConfig": "default",
+    // 代码折叠
+    "editor.foldingStrategy": "indentation",
+    "editor.showFoldingControls": "always",
+    // 自动导入
+    "java.completion.importOrder": [
+        "java",
+        "javax",
+        "org",
+        "com"
+    ],
+    // SonarLint 配置
+    "sonarlint.rules": {
+        "java:S1192": {
+            "level": "off"
+        }
+    },
+    // GitLens 配置
+    "gitlens.currentLine.enabled": true,
+    "gitlens.hovers.currentLine.over": "line",
+    "gitlens.codeLens.enabled": true,
+    // Error Lens 配置
+    "errorLens.enabledDiagnosticLevels": [
+        "error",
+        "warning"
+    ],
+    "errorLens.fontSize": "13px",
+    // 窗口配置
+    "window.title": "${dirty}${activeEditorShort}${separator}${rootName}",
+    "window.zoomLevel": 0,
+    // 工作台配置
+    "workbench.startupEditor": "welcomePage",
+    "workbench.editor.enablePreview": false,
+    "workbench.editor.closeOnFileDelete": true,
+    // 搜索配置
+    "search.exclude": {
+        "**/target": true,
+        "**/node_modules": true,
+        "**/.git": true
+    }
+}

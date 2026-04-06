@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.mapper.CounterMapper">
+
+    <resultMap id="CounterResultMap" type="com.example.entity.Counter">
+        <id property="id" column="id" />
+        <result property="name" column="name" />
+        <result property="currentMax" column="current_max" />
+        <result property="step" column="step" />
+        <result property="version" column="version" />
+        <result property="updatedTime" column="updated_time" />
+    </resultMap>
+
+    <select id="selectByName" resultMap="CounterResultMap">
+        SELECT id, name, current_max, step, version, updated_time
+        FROM counters
+        WHERE name = #{name}
+        LIMIT 1
+    </select>
+
+    <!-- 初始化（幂等）：若不存在则插入一条初始记录 -->
+    <insert id="initIfAbsent">
+        INSERT INTO counters(name, current_max, step, version, updated_time)
+        SELECT #{name}, 0, #{step}, 0, NOW()
+        WHERE NOT EXISTS (SELECT 1 FROM counters WHERE name = #{name})
+    </insert>
+
+    <!-- 乐观锁方式批量分配：current_max += step, version += 1 -->
+    <update id="allocateNextRange">
+        UPDATE counters
+        SET current_max = current_max + #{step},
+            version = version + 1,
+            updated_time = NOW()
+        WHERE name = #{name} AND version = #{expectedVersion}
+    </update>
+
+</mapper>
+
+
